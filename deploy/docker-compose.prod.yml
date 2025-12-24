@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: diplomacy_prod
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    restart: always
+    command: sh -c "mix ecto.migrate && mix phx.server"
+    ports:
+      - "4000:4000"
+    depends_on:
+      - db
+    environment:
+      MIX_ENV: prod
+      DATABASE_URL: ecto://postgres:${DB_PASSWORD}@db/diplomacy_prod
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      PHX_HOST: ${PHX_HOST}
+      PHX_SERVER: "true"
+      PORT: 4000
+
+volumes:
+  postgres_prod_data:
