@@ -79,11 +79,4 @@ defmodule Diplomacy.Game.SettingsCache do
       settings
     end
   end
-
-  defp has_nil_fields?(settings) do
-    settings
-    |> Map.from_struct()
-    |> Map.drop([:id, :inserted_at, :updated_at, :__meta__])
-    |> Enum.any?(fn {_, v} -> is_nil(v) end)
-  end
 end

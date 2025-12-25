@@ -1,6 +1,5 @@
 defmodule DiplomacyWeb.CountryLive do
   use DiplomacyWeb, :live_view
-  alias Phoenix.LiveView.JS
   alias Diplomacy.Game
   alias Diplomacy.Game.SettingsCache
   alias DiplomacyWeb.Presence
