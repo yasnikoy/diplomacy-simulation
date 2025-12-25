@@ -10,8 +10,10 @@ defmodule Diplomacy.Application do
     children = [
       DiplomacyWeb.Telemetry,
       Diplomacy.Repo,
-      {DNSCluster, query: Application.get_env(:diplomacy, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Diplomacy.PubSub},
+      Diplomacy.Game.SettingsCache,
+      DiplomacyWeb.Presence,
+      {DNSCluster, query: Application.get_env(:diplomacy, :dns_cluster_query) || :ignore},
       # Start to serve requests, typically the last entry
       DiplomacyWeb.Endpoint
     ]

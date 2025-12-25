@@ -6,7 +6,29 @@ defmodule Diplomacy.Game do
 
   import Ecto.Query, warn: false
   alias Diplomacy.Repo
-  alias Diplomacy.Game.Country
+  alias Diplomacy.Game.{Country, SettingsCache, ChatMessage}
+
+  @doc """
+  Lists the last 50 chat messages.
+  """
+  def list_recent_messages(limit \\ 50) do
+    Repo.all(from m in ChatMessage, order_by: [asc: m.inserted_at], limit: ^limit)
+  end
+
+  @doc """
+  Sends a chat message and broadcasts it.
+  """
+  def send_chat_message(attrs) do
+    %ChatMessage{}
+    |> ChatMessage.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, message} ->
+        Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", {:new_chat_message, message})
+        {:ok, message}
+      error -> error
+    end
+  end
 
   @doc """
   Returns the list of countries.
@@ -45,22 +67,25 @@ defmodule Diplomacy.Game do
   end
 
   @doc """
-  Collects taxes: +Budget, -Morale.
+  Collects taxes: +Budget, -Morale. Uses dynamic settings.
   """
-  @spec collect_tax(Country.t(), integer()) :: {:ok, Country.t()} | {:error, any()}
-  def collect_tax(%Country{} = country, amount) when amount > 0 do
+  @spec collect_tax(Country.t()) :: {:ok, Country.t()} | {:error, any()}
+  def collect_tax(%Country{} = country) do
+    settings = SettingsCache.get()
+    
     update_country(country, %{
-      budget: country.budget + amount,
-      happiness: max(0, country.happiness - 5)
+      budget: country.budget + settings.tax_amount,
+      happiness: max(0, country.happiness - settings.tax_happiness_penalty)
     })
   end
 
   @doc """
-  Recruits soldiers: -Budget, +Army.
+  Recruits soldiers: -Budget, +Army. Uses dynamic settings.
   """
   @spec recruit_soldiers(Country.t(), integer()) :: {:ok, Country.t()} | {:error, String.t()}
   def recruit_soldiers(%Country{} = country, count) when count > 0 do
-    cost = count * 10
+    settings = SettingsCache.get()
+    cost = count * settings.soldier_cost
 
     if country.budget >= cost do
       update_country(country, %{
@@ -73,15 +98,17 @@ defmodule Diplomacy.Game do
   end
 
   @doc """
-  Declares war on a target country using a transaction.
+  Declares war on a target country using a transaction. Uses dynamic settings.
   """
   @spec declare_war(Country.t(), integer()) :: {:ok, map()} | {:error, any()}
   def declare_war(%Country{} = attacker, defender_id) do
+    settings = SettingsCache.get()
+    
     Repo.transaction(fn ->
       with defender <- get_country!(defender_id),
-           :ok <- check_war_resources(attacker, defender),
-           {:ok, up_attacker} <- apply_attacker_penalty(attacker),
-           {:ok, up_defender} <- apply_defender_penalty(defender) do
+           :ok <- check_war_resources(attacker, defender, settings),
+           {:ok, up_attacker} <- apply_attacker_penalty(attacker, settings),
+           {:ok, up_defender} <- apply_defender_penalty(defender, settings) do
         
         Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", {:attacked, defender.id})
         %{attacker: up_attacker, defender: up_defender}
@@ -91,27 +118,31 @@ defmodule Diplomacy.Game do
     end)
   end
 
-  defp check_war_resources(a, d) do
+  defp check_war_resources(a, d, s) do
     cond do
       a.id == d.id -> {:error, "Cannot attack yourself"}
-      a.army_count < 10 or a.budget < 100 -> {:error, "Not enough resources"}
+      a.army_count < s.attack_cost_soldiers or a.budget < s.attack_cost_gold -> 
+        {:error, "Not enough resources"}
       true -> :ok
     end
   end
 
-  defp apply_attacker_penalty(a) do
+  defp apply_attacker_penalty(a, s) do
     update_country(a, %{
-      army_count: a.army_count - 10,
-      budget: a.budget - 100,
-      happiness: max(0, a.happiness - 5)
+      army_count: a.army_count - s.attack_cost_soldiers,
+      budget: a.budget - s.attack_cost_gold,
+      happiness: max(0, a.happiness - s.attack_happiness_penalty_attacker)
     })
   end
 
-  defp apply_defender_penalty(d) do
+  defp apply_defender_penalty(d, s) do
+    # Damage calculation based on settings range
+    damage = Enum.random(s.attack_damage_min..s.attack_damage_max)
+    
     update_country(d, %{
-      army_count: max(0, d.army_count - 5),
-      budget: max(0, d.budget - 200),
-      happiness: max(0, d.happiness - 10)
+      army_count: max(0, d.army_count - damage),
+      budget: max(0, d.budget - (damage * s.attack_defender_budget_multiplier)),
+      happiness: max(0, d.happiness - s.attack_happiness_penalty_defender)
     })
   end
 

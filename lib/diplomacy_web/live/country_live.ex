@@ -1,22 +1,35 @@
 defmodule DiplomacyWeb.CountryLive do
   use DiplomacyWeb, :live_view
+  alias Phoenix.LiveView.JS
   alias Diplomacy.Game
+  alias Diplomacy.Game.SettingsCache
+  alias DiplomacyWeb.Presence
+
+  @presence_topic "presence:countries"
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    if connected?(socket), do: Game.subscribe()
+    if connected?(socket) do
+      Game.subscribe()
+      Phoenix.PubSub.subscribe(Diplomacy.PubSub, @presence_topic)
+    end
 
     countries = Game.list_countries()
+    settings = SettingsCache.get()
     
-    # Find the requested country, handle case where it doesn't exist (e.g. invalid ID)
     current_country = Enum.find(countries, fn c -> to_string(c.id) == id end)
 
     if current_country do
-      socket =
-        socket
-        |> assign(:countries, countries)
-        |> assign(:country, current_country)
-      {:ok, socket}
+      {:ok,
+       socket
+       |> assign(:countries, countries)
+       |> assign(:country, current_country)
+       |> assign(:settings, settings)
+       |> assign(:chat_messages, Game.list_recent_messages())
+       |> assign(:show_chat, false)
+       |> assign(:selected_role, nil)
+       |> assign(:role_counts, %{})
+       |> assign(:chat_content, "")}
     else
       {:ok, push_navigate(socket, to: ~p"/")}
     end
@@ -25,12 +38,51 @@ defmodule DiplomacyWeb.CountryLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col lg:flex-row items-start justify-center h-full p-4 lg:p-8 gap-8 bg-gray-900 min-h-screen">
+    <div class="relative flex flex-col lg:flex-row items-start justify-center h-full p-4 lg:p-8 gap-8 bg-gray-900 min-h-screen overflow-hidden">
+      
+      <!-- Role Selection Overlay -->
+      <%= if is_nil(@selected_role) do %>
+        <div class="fixed inset-0 z-50 bg-gray-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-gray-800 border border-gray-700 p-8 rounded-2xl max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
+            <h2 class="text-3xl font-black text-white mb-2 text-center tracking-tight">SELECT YOUR ROLE</h2>
+            <p class="text-gray-400 text-center mb-8">Establish your authority in <%= @country.name %></p>
+            
+            <div class="grid grid-cols-1 gap-4">
+              <%= for role <- String.split(@settings.available_roles, ",") do %>
+                <% 
+                  count = Map.get(@role_counts, role, 0)
+                  is_full = count >= @settings.max_players_per_role
+                %>
+                <button 
+                  phx-click="select_role" 
+                  phx-value-role={role} 
+                  disabled={is_full}
+                  class={"group p-4 rounded-xl transition duration-300 border flex justify-between items-center " <> 
+                    if is_full, do: "bg-gray-800 border-gray-700 cursor-not-allowed opacity-50", else: "bg-gray-700 hover:bg-emerald-600 border-gray-600 hover:border-emerald-400"}
+                >
+                  <div class="flex flex-col items-start">
+                    <span class="font-bold text-white text-lg"><%= role %></span>
+                    <span class={"text-[10px] uppercase font-bold " <> if is_full, do: "text-red-500", else: "text-gray-400"}><%= count %> / <%= @settings.max_players_per_role %> Active</span>
+                  </div>
+                  <span :if={!is_full} class="opacity-0 group-hover:opacity-100 transition">➡️</span>
+                  <span :if={is_full}>🚫 Full</span>
+                </button>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
       <!-- Player Control Panel -->
       <div class="flex flex-col items-center space-y-6 lg:space-y-8 w-full lg:w-1/3">
-        <h1 class="text-3xl lg:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 drop-shadow-md text-center">
-          Command Center
-        </h1>
+        <header class="text-center">
+          <h1 class="text-3xl lg:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500 drop-shadow-md">
+            Command Center
+          </h1>
+          <div :if={@selected_role} class="inline-block mt-2 px-3 py-1 bg-gray-800 border border-gray-700 rounded-full text-xs font-bold text-emerald-400 uppercase tracking-widest">
+            🎭 <%= @selected_role %>
+          </div>
+        </header>
 
         <%= if @country do %>
           <div class="bg-gray-800 p-6 lg:p-8 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-md relative overflow-hidden group">
@@ -68,21 +120,21 @@ defmodule DiplomacyWeb.CountryLive do
               <button phx-click="collect_tax" class="w-full group relative overflow-hidden bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 lg:py-4 px-4 lg:px-6 rounded-xl transition duration-300 shadow-lg hover:shadow-emerald-500/20 active:scale-95 text-sm lg:text-base">
                 <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                 <div class="flex items-center justify-center gap-2">
-                  <span>💰</span> <span>Collect Taxes (+100, -5 🙂)</span>
+                  <span>💰</span> <span>Collect Taxes (+<%= @settings.tax_amount %>, -<%= @settings.tax_happiness_penalty %> 🙂)</span>
                 </div>
               </button>
               
               <button phx-click="recruit_soldier" class="w-full group relative overflow-hidden bg-red-600 hover:bg-red-500 text-white font-bold py-3 lg:py-4 px-4 lg:px-6 rounded-xl transition duration-300 shadow-lg hover:shadow-red-500/20 active:scale-95 text-sm lg:text-base">
                  <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                 <div class="flex items-center justify-center gap-2">
-                  <span>⚔️</span> <span>Recruit Soldier (Cost: 10)</span>
+                  <span>⚔️</span> <span>Recruit Soldier (Cost: <%= @settings.soldier_cost %>)</span>
                 </div>
               </button>
             </div>
           </div>
         <% else %>
           <div class="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-lg">
-            No country found! Please run seeds.
+            No country found!
           </div>
         <% end %>
         
@@ -118,7 +170,7 @@ defmodule DiplomacyWeb.CountryLive do
                     <td class="p-3 lg:p-4 text-right font-mono text-red-300 text-sm lg:text-base"><%= c.army_count %> ⚔️</td>
                     <td class="p-3 lg:p-4 text-right">
                       <%= if @country && c.id != @country.id do %>
-                        <button phx-click="attack" phx-value-target-id={c.id} class="bg-red-700 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded transition" title="Cost: 10 Army, 100 Gold">
+                        <button phx-click="attack" phx-value-target-id={c.id} class="bg-red-700 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded transition" title={"Cost: #{@settings.attack_cost_soldiers} Army, #{@settings.attack_cost_gold} Gold"}>
                           ATTACK
                         </button>
                       <% else %>
@@ -132,8 +184,91 @@ defmodule DiplomacyWeb.CountryLive do
           </div>
         </div>
       </div>
+
+      <!-- Real-Time Chat Toggle Button -->
+      <button :if={@settings.chat_enabled} phx-click="toggle_chat" class="fixed bottom-6 right-6 z-40 bg-emerald-600 hover:bg-emerald-500 text-white p-4 rounded-full shadow-2xl transition active:scale-90">
+        <%= if @show_chat, do: "✖️", else: "💬" %>
+      </button>
+
+      <!-- Chat Window -->
+      <div :if={@show_chat && @settings.chat_enabled} class="fixed bottom-24 right-6 z-40 w-80 lg:w-96 h-[500px] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+        <header class="bg-gray-750 p-4 border-b border-gray-700 flex justify-between items-center">
+          <h3 class="font-bold text-white flex items-center gap-2">
+            <span>🌐</span> Global Intelligence
+          </h3>
+          <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase">Live</span>
+        </header>
+
+        <div id="chat-messages" phx-hook="ChatScroll" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-900/50">
+          <%= for msg <- @chat_messages do %>
+            <div id={"msg-#{msg.id}"} class="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-1">
+              <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter">
+                <span class="text-blue-400"><%= msg.country_name %></span>
+                <span class="text-gray-500">•</span>
+                <span class="text-orange-400"><%= msg.role %></span>
+              </div>
+              <p class="text-sm text-gray-200 bg-gray-700/50 p-2 rounded-lg border border-gray-600/30 inline-block self-start max-w-[90%] break-words">
+                <%= msg.content %>
+              </p>
+            </div>
+          <% end %>
+        </div>
+
+        <form phx-submit="send_chat" phx-change="sync_chat" class="p-4 bg-gray-750 border-t border-gray-700 flex gap-2">
+          <input name="content" value={@chat_content} placeholder="Broadcast message..." autocomplete="off" class="flex-1 bg-gray-900 border-gray-600 text-white rounded-lg text-sm px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500" />
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm transition">
+            Send
+          </button>
+        </form>
+      </div>
+
     </div>
     """
+  end
+
+  # Events
+  @impl true
+  def handle_event("select_role", %{"role" => role}, socket) do
+    if connected?(socket) do
+      Presence.track(self(), @presence_topic, to_string(socket.assigns.country.id), %{
+        role: role,
+        country_name: socket.assigns.country.name
+      })
+    end
+
+    {:noreply, assign(socket, :selected_role, role)}
+  end
+
+  @impl true
+  def handle_event("toggle_chat", _params, socket) do
+    {:noreply, assign(socket, :show_chat, !socket.assigns.show_chat)}
+  end
+
+  @impl true
+  def handle_event("sync_chat", %{"content" => content}, socket) do
+    {:noreply, assign(socket, :chat_content, content)}
+  end
+
+  @impl true
+  def handle_event("send_chat", %{"content" => content}, socket) do
+    if String.trim(content) != "" do
+      attrs = %{
+        content: content,
+        role: socket.assigns.selected_role,
+        country_name: socket.assigns.country.name,
+        country_id: socket.assigns.country.id
+      }
+      
+      case Game.send_chat_message(attrs) do
+        {:ok, _message} -> 
+          # Reset chat content locally
+          {:noreply, assign(socket, :chat_content, "")}
+        _ -> 
+          {:noreply, put_flash(socket, :error, "Could not send message")}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -149,8 +284,7 @@ defmodule DiplomacyWeb.CountryLive do
 
   @impl true
   def handle_event("collect_tax", _params, socket) do
-    {:ok, updated_country} = Game.collect_tax(socket.assigns.country, 100)
-    # We update immediately. The PubSub message will arrive later and re-update/confirm.
+    {:ok, updated_country} = Game.collect_tax(socket.assigns.country)
     {:noreply, assign(socket, :country, updated_country)}
   end
 
@@ -165,10 +299,35 @@ defmodule DiplomacyWeb.CountryLive do
     end
   end
 
+  # PubSub Info
+  @impl true
+  def handle_info({:new_chat_message, message}, socket) do
+    {:noreply, assign(socket, :chat_messages, socket.assigns.chat_messages ++ [message])}
+  end
+
+  @impl true
+  def handle_info({:settings_updated, settings}, socket) do
+    {:noreply, assign(socket, :settings, settings)}
+  end
+
+  @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
+    if socket.assigns[:country] do
+      role_counts = 
+        Presence.list(@presence_topic)
+        |> Map.get(to_string(socket.assigns.country.id), %{metas: []})
+        |> Map.get(:metas)
+        |> Enum.frequencies_by(& &1.role)
+
+      {:noreply, assign(socket, :role_counts, role_counts)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info({:attacked, victim_id}, socket) do
     if socket.assigns.country && socket.assigns.country.id == victim_id do
-      # Trigger visual effect (e.g., shake screen)
       {:noreply, push_event(socket, "trigger-shake", %{}) |> put_flash(:error, "⚠️ YOU ARE UNDER ATTACK! ⚠️")}
     else
       {:noreply, socket}
@@ -177,7 +336,6 @@ defmodule DiplomacyWeb.CountryLive do
 
   @impl true
   def handle_info(:world_tick, socket) do
-    # Efficiently refresh the whole list and current player state
     countries = Game.list_countries()
     
     new_current_country = 
@@ -192,20 +350,17 @@ defmodule DiplomacyWeb.CountryLive do
 
   @impl true
   def handle_info({:country_created, new_country}, socket) do
-    # Add the new country to the list
     new_countries = [new_country | socket.assigns.countries]
     {:noreply, assign(socket, :countries, new_countries)}
   end
 
   @impl true
   def handle_info({:country_updated, updated_country}, socket) do
-    # Update the country in the list
     new_countries = 
       Enum.map(socket.assigns.countries, fn c -> 
         if c.id == updated_country.id, do: updated_country, else: c
       end)
 
-    # If the updated country is the player's country, update that too
     new_current_country = 
       if socket.assigns.country && socket.assigns.country.id == updated_country.id do
         updated_country

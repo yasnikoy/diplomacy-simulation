@@ -18,7 +18,8 @@ defmodule DiplomacyWeb.Router do
     pipe_through :browser
 
     live "/", HomeLive
-    live "/game/:id", CountryLive
+    live "/country/:id", CountryLive
+    live "/admin", AdminLive
   end
 
   # Other scopes may use custom stacks.

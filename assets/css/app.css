@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
 /* Custom Scrollbar */
+/* Hide default numeric input arrows */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
 }

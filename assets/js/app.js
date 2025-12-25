@@ -28,6 +28,18 @@ import topbar from "../vendor/topbar"
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let Hooks = {}
 
+Hooks.ChatScroll = {
+  mounted() {
+    this.scrollBottom()
+  },
+  updated() {
+    this.scrollBottom()
+  },
+  scrollBottom() {
+    this.el.scrollTop = this.el.scrollHeight
+  }
+}
+
 Hooks.RollingNumber = {
   mounted() {
     this.startValue = parseInt(this.el.innerText.replace(/\D/g, '')) || 0;

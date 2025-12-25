@@ -1,6 +1,7 @@
 defmodule DiplomacyWeb.HomeLive do
   use DiplomacyWeb, :live_view
   alias Diplomacy.Game
+  alias Diplomacy.Game.SettingsCache
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: Game.subscribe()
@@ -18,7 +19,7 @@ defmodule DiplomacyWeb.HomeLive do
           <h2 class="text-xl lg:text-2xl font-semibold mb-4 lg:mb-6">Join Existing Nation</h2>
           <div class="space-y-3 lg:space-y-4 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
             <%= for country <- @countries do %>
-              <.link navigate={~p"/game/#{country.id}"} class="block w-full text-left bg-gray-700 hover:bg-gray-600 p-3 lg:p-4 rounded-lg transition group">
+              <.link navigate={~p"/country/#{country.id}"} class="block w-full text-left bg-gray-700 hover:bg-gray-600 p-3 lg:p-4 rounded-lg transition group">
                 <div class="flex justify-between items-center">
                   <span class="font-bold group-hover:text-emerald-400 text-sm lg:text-base truncate max-w-[50%]"><%= country.name %></span>
                   <div class="text-xs lg:text-sm text-gray-400 flex gap-2 lg:gap-3">
@@ -53,9 +54,10 @@ defmodule DiplomacyWeb.HomeLive do
   end
 
   def handle_event("create_country", %{"name" => name}, socket) do
-    case Game.create_country(%{name: name, budget: 500, army_count: 10}) do
+    settings = SettingsCache.get()
+    case Game.create_country(%{name: name, budget: settings.starting_budget, army_count: settings.starting_army}) do
       {:ok, country} ->
-        {:noreply, push_navigate(socket, to: ~p"/game/#{country.id}")}
+        {:noreply, push_navigate(socket, to: ~p"/country/#{country.id}")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not create country. Name might be taken.")}

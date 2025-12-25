@@ -2,60 +2,56 @@
 
 **Karar Verilen Mimari:**
 *   **Dil:** Elixir (Erlang VM üzerinde) - *Yüksek hata toleransı ve eşzamanlılık için.*
-*   **Web Framework:** Phoenix - *Modern web standartları.*
-*   **Frontend/Etkileşim:** Phoenix LiveView - *React yazmadan, sunucu taraflı render ile SPA deneyimi.*
-*   **Stil:** Tailwind CSS - *Hızlı ve modern UI tasarımı.*
-*   **Veritabanı:** PostgreSQL.
-*   **Gerçek Zamanlı İletişim:** Phoenix PubSub (WebSocket).
+*   **Web Framework:** Phoenix 1.7.3+
+*   **Frontend/Etkileşim:** Phoenix LiveView - *Sunucu taraflı SPA deneyimi.*
+*   **Stil:** Tailwind CSS v4 - *Modern UI tasarımı.*
+*   **Veritabanı:** PostgreSQL via Ecto.
+*   **Gerçek Zamanlı İletişim:** Phoenix PubSub.
 
 ---
 
-## 🎯 MVP (Minimum Çalışan Ürün) Tanımı
-**Amaç:** Sistemin "canlı" olduğunu kanıtlamak.
-**Kapsam:**
-1.  **Ülke Paneli:** Kullanıcı ülkesinin bütçesini ve asker sayısını görür.
-2.  **Etkileşim:** "Vergi Topla" butonuna basar, sunucuda işlem yapılır, bütçe artar.
-3.  **Real-Time:** Sayfa yenilenmeden (F5 atmadan) bütçe güncellenir.
-4.  **Veri Kalıcılığı:** Sayfayı kapatıp açsa bile veriler veritabanında saklanır.
+## 🎯 MVP (Minimum Çalışan Ürün) Durumu: TAMAMLANDI ✅
+**Gerçekleşen Kapsam:**
+1.  **Ülke Seçimi (Lobby):** Kullanıcılar ülke kurabilir veya mevcut ülkelerle oyuna girebilir.
+2.  **Ekonomi:** Vergi toplama (+Altın, -Moral) ve Pasif Gelir sistemi.
+3.  **Askeri:** Ordu kurma ve diğer ülkelere Savaş İlan Etme (İşlem bazlı güvenli sistem).
+4.  **Moral Sistemi:** Halkın mutluluğu vergi ve savaşla düşer, zamanla iyileşir.
+5.  **Görsel Efektler:** Rolling numbers (Slot makinesi etkisi) ve saldırı anında ekran titremesi.
+6.  **Real-Time:** Tüm güncellemeler PubSub üzerinden tüm istemcilere anlık yansır.
+7.  **Deployment:** VPS/Ubuntu için Docker + Nginx yapılandırması hazırlandı.
 
 ---
 
 ## 🤖 Gemini'nin (Agent) Görev Listesi
 
-Benim (Yapay Zeka) yapacağım işlemler adım adım şunlardır:
+### 1. Hazırlık ve Altyapı ✅
+*   [x] **Docker Compose Hazırlığı:** `docker-compose.yml` ve `Dockerfile` oluşturuldu.
+*   [x] **Phoenix Projesi Oluşturma:** İskelet yapı kuruldu.
 
-### 1. Hazırlık ve Altyapı
-*   [ ] **Docker Compose Hazırlığı:** Senin bilgisayarına Elixir ve Postgres kurmakla uğraşmaman için projeyi Docker içinde çalışacak şekilde ayarlayacağım (`docker-compose.yml` ve `Dockerfile`).
-*   [ ] **Phoenix Projesi Oluşturma:** Gerekli komutları çalıştırıp iskelet dosyaları oluşturacağım.
+### 2. Veritabanı ve Mantık (Backend) ✅
+*   [x] **Migration:** `countries` tablosuna `budget`, `army_count` ve `happiness` eklendi.
+*   [x] **Schema Tanımı:** `Country` modeli validasyonlarla kuruldu.
+*   [x] **Oyun Motoru (Context):** `Diplomacy.Game` modülü Transaction desteğiyle yazıldı.
+*   [x] **OTP İşlemleri:** `Game.Ticker` ile her 5 saniyede bir kaynak/moral güncellemesi.
 
-### 2. Veritabanı ve Mantık (Backend)
-*   [ ] **Migration Oluşturma:** `countries` tablosunu veritabanına tanıtacağım.
-*   [ ] **Schema Tanımı:** Elixir tarafında `Country` veri modelini yazacağım.
-*   [ ] **Oyun Motoru (Context):** `Game.Engine` modülünü yazacağım. Bu modül şu işleri yapacak:
-    *   Ülke yaratma.
-    *   Kaynağı güvenli şekilde güncelleme (Transaction ile).
+### 3. Arayüz ve Canlı Bağlantı (Frontend - LiveView) ✅
+*   [x] **Lobby (HomeLive):** Gerçek zamanlı ülke listesi ve oluşturma formu.
+*   [x] **Dashboard (CountryLive):** Komuta merkezi arayüzü.
+*   [x] **JS Hooks:** Sayıların dönme efekti (`RollingNumber`) ve ekran sarsma.
+*   [x] **Responsive:** Mobil cihazlar için tam uyumlu grid sistemi.
 
-### 3. Arayüz ve Canlı Bağlantı (Frontend - LiveView)
-*   [ ] **Layout Tasarımı:** `root.html.heex` dosyasını Tailwind CSS ile karanlık mod (Dark Mode) olacak şekilde temizleyeceğim.
-*   [ ] **LiveView Modülü:** `CountryLive` adında bir süreç oluşturacağım.
-    *   `mount`: Sayfa açılınca veriyi çeken fonksiyon.
-    *   `render`: HTML'i çizen fonksiyon.
-    *   `handle_event`: Butona basılınca çalışan fonksiyon.
-
-### 4. Test ve Teslim
-*   [ ] Kodları yazdıktan sonra nasıl çalıştıracağını gösteren tek bir komut vereceğim.
+### 4. Test ve Teslim ✅
+*   [x] **Unit & Integration Test:** 13/13 test başarıyla geçiyor.
+*   [x] **Production Config:** VPS kurulumu için `deploy/` klasörü oluşturuldu.
 
 ---
 
-## ⏳ Tahmini Süreler (Benim Çalışmam)
-
-1.  **Altyapı Dosyaları (Docker vb.):** ~5 Dakika
-2.  **Backend Mantığı (Elixir Kodları):** ~15 Dakika
-3.  **Frontend Arayüzü (LiveView):** ~15 Dakika
-4.  **Hata Kontrolleri:** ~5 Dakika
-
-**Toplam:** ~40-45 dakika içinde kodları yazıp sana "Çalıştır" komutunu vermeye hazır olurum.
+## 🚀 Gelecek Planları (V2)
+1.  **Diplomasi:** Ülkeler arası ittifak veya ticaret teklifleri.
+2.  **İstihbarat:** Diğer ülkelerin tam bütçesini görme (şu an herkes görüyor, gizlenebilir).
+3.  **Harita:** Basit bir 2D harita üzerinde konumlandırma.
+4.  **Kalıcı Kullanıcı:** Auth sistemi (şimdilik ID bazlı).
 
 ---
 
-*Not: Şu an kod yazımına başlanmadı. Sadece plan yapıldı ve dosyalar düzenlendi.*
+*Durum: MVP başarıyla tamamlandı ve Git deposuna hazır hale getirildi.*

@@ -4,11 +4,8 @@ defmodule Diplomacy.Game.Ticker do
   """
   use GenServer
   alias Diplomacy.Game
+  alias Diplomacy.Game.SettingsCache
   require Logger
-
-  @interval 5000 
-  @budget_inc 10
-  @happiness_inc 1
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -17,19 +14,22 @@ defmodule Diplomacy.Game.Ticker do
   @impl true
   def init(state) do
     if Application.get_env(:diplomacy, :start_ticker, true) do
-      schedule_tick()
+      settings = SettingsCache.get()
+      schedule_tick(settings.passive_income_interval_ms)
     end
     {:ok, state}
   end
 
   @impl true
   def handle_info(:tick, state) do
-    Game.process_passive_income(@budget_inc, @happiness_inc)
-    schedule_tick()
+    settings = SettingsCache.get()
+    Game.process_passive_income(settings.passive_income_amount, settings.passive_income_happiness_inc)
+    
+    schedule_tick(settings.passive_income_interval_ms)
     {:noreply, state}
   end
 
-  defp schedule_tick do
-    Process.send_after(self(), :tick, @interval)
+  defp schedule_tick(interval) do
+    Process.send_after(self(), :tick, interval)
   end
 end
