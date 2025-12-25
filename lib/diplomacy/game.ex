@@ -19,7 +19,7 @@ defmodule Diplomacy.Game do
   @doc """
   Gets a single country.
   """
-  @spec get_country!(integer() | string()) :: Country.t()
+  @spec get_country!(integer() | String.t()) :: Country.t()
   def get_country!(id), do: Repo.get!(Country, id)
 
   @doc """
