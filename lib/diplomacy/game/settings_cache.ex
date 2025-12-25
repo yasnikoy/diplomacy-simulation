@@ -1,5 +1,6 @@
 defmodule Diplomacy.Game.SettingsCache do
   use GenServer
+  import Ecto.Query
   alias Diplomacy.Repo
   alias Diplomacy.Game.Settings
 
@@ -37,19 +38,18 @@ defmodule Diplomacy.Game.SettingsCache do
 
   @impl true
   def init(_state) do
-    :ets.new(@table, [:set, :protected, :named_table])
+    :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
     fetch_and_cache()
     {:ok, %{}}
   end
 
   @impl true
   def handle_call({:update, attrs}, _from, state) do
-    settings = load_settings_from_db()
+    settings = get() # Get current from ETS
 
     case Settings.changeset(settings, attrs) |> Repo.update() do
       {:ok, updated_settings} ->
         :ets.insert(@table, {@key, updated_settings})
-        # Broadcast that settings changed
         Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", {:settings_updated, updated_settings})
         {:reply, {:ok, updated_settings}, state}
 
@@ -65,18 +65,25 @@ defmodule Diplomacy.Game.SettingsCache do
   end
 
   defp load_settings_from_db do
-    settings = Repo.one(Settings) || %Settings{} |> Repo.insert!()
+    # Her zaman ilk kaydı al, yoksa oluştur. 
+    # Bu sayede DB'de birden fazla satır olsa bile tutarlılık sağlanır.
+    case Repo.all(from s in Settings, limit: 1) do
+      [settings] ->
+        settings
 
-    # Identify fields that are currently nil but should have values
-    # We use the changeset to apply defaults if we find nils
-    if is_nil(settings.starting_budget) or is_nil(settings.starting_army) or is_nil(settings.admin_inject_amount) do
-      {:ok, updated} = 
-        settings 
-        |> Settings.changeset(%{starting_budget: 500, starting_army: 10, admin_inject_amount: 1000}) 
-        |> Repo.update()
-      updated
-    else
-      settings
+      [] ->
+        %Settings{}
+        |> Settings.changeset(%{
+          starting_budget: 500,
+          starting_army: 10,
+          admin_inject_amount: 1000,
+          passive_income_amount: 10,
+          passive_income_interval_ms: 5000,
+          passive_income_happiness_inc: 1,
+          event_enabled: false,
+          event_probability: 5
+        })
+        |> Repo.insert!()
     end
   end
 end

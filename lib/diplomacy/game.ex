@@ -113,7 +113,7 @@ defmodule Diplomacy.Game do
     settings = SettingsCache.get()
     
     Repo.transaction(fn ->
-      with defender <- get_country!(defender_id),
+      with defender when not is_nil(defender) <- Repo.get(Country, defender_id),
            :ok <- check_war_resources(attacker, defender, settings),
            {:ok, up_attacker} <- apply_attacker_penalty(attacker, settings),
            {:ok, up_defender} <- apply_defender_penalty(defender, settings) do
@@ -121,6 +121,7 @@ defmodule Diplomacy.Game do
         Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", {:attacked, defender.id})
         %{attacker: up_attacker, defender: up_defender}
       else
+        nil -> Repo.rollback("Defender not found")
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
@@ -174,6 +175,54 @@ defmodule Diplomacy.Game do
     Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", :world_tick)
     
     result
+  end
+
+  @doc """
+  Triggers a random global event based on a predefined list.
+  """
+  @spec trigger_random_event() :: :ok | {:error, String.t()}
+  def trigger_random_event do
+    events = [
+      %{
+        title: "Global Economic Boom",
+        description: "A sudden rise in global trade! All nations receive +200 gold.",
+        effect: fn -> 
+          from(c in Country, update: [inc: [budget: 200]]) |> Repo.update_all([])
+        end
+      },
+      %{
+        title: "Stock Market Crash",
+        description: "Financial crisis hit the world! All nations lose 150 gold.",
+        effect: fn -> 
+          from(c in Country, update: [set: [budget: fragment("GREATEST(0, budget - 150)")]]) |> Repo.update_all([])
+        end
+      },
+      %{
+        title: "Peace Festival",
+        description: "People are celebrating! Happiness increases by 15 across the globe.",
+        effect: fn -> 
+          from(c in Country, update: [set: [happiness: fragment("LEAST(100, happiness + 15)")]]) |> Repo.update_all([])
+        end
+      },
+      %{
+        title: "Military Coup Attempt",
+        description: "Unrest in the barracks! Random nation loses 30% of its army.",
+        effect: fn -> 
+          case Repo.all(from c in Country, order_by: fragment("RANDOM()"), limit: 1) do
+            [c] -> 
+              reduction = round(c.army_count * 0.3)
+              update_country(c, %{army_count: c.army_count - reduction})
+            [] -> :ok
+          end
+        end
+      }
+    ]
+
+    event = Enum.random(events)
+    event.effect.()
+    
+    Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", {:global_event, event})
+    :ok
   end
 
   @spec subscribe() :: :ok | {:error, term()}

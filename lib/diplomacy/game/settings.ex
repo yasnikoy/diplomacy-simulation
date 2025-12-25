@@ -22,6 +22,8 @@ defmodule Diplomacy.Game.Settings do
     field :available_roles, :string, default: "Diplomat,Commander"
     field :max_players_per_role, :integer, default: 3
     field :admin_inject_amount, :integer, default: 1000
+    field :event_enabled, :boolean, default: false
+    field :event_probability, :integer, default: 5
 
     timestamps(type: :utc_datetime)
   end
@@ -48,7 +50,9 @@ defmodule Diplomacy.Game.Settings do
       :chat_enabled,
       :available_roles,
       :max_players_per_role,
-      :admin_inject_amount
+      :admin_inject_amount,
+      :event_enabled,
+      :event_probability
     ])
     |> validate_required([
       :soldier_cost,
@@ -69,8 +73,11 @@ defmodule Diplomacy.Game.Settings do
       :chat_enabled,
       :available_roles,
       :max_players_per_role,
-      :admin_inject_amount
+      :admin_inject_amount,
+      :event_enabled,
+      :event_probability
     ])
+    |> validate_number(:event_probability, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
     |> validate_number(:soldier_cost, greater_than_or_equal_to: 0)
     |> validate_number(:passive_income_interval_ms, greater_than_or_equal_to: 100) # Minimum 100ms to prevent crash
     |> validate_number(:attack_damage_min, greater_than_or_equal_to: 0)

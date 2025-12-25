@@ -21,14 +21,15 @@ defmodule DiplomacyWeb.CountryLive do
     if current_country do
       {:ok,
        socket
-       |> assign(:countries, countries)
        |> assign(:country, current_country)
        |> assign(:settings, settings)
-       |> assign(:chat_messages, Game.list_recent_messages())
        |> assign(:show_chat, false)
        |> assign(:selected_role, nil)
        |> assign(:role_counts, %{})
-       |> assign(:chat_content, "")}
+       |> assign(:chat_content, "")
+       |> assign(:active_event, nil)
+       |> stream(:chat_messages, Game.list_recent_messages())
+       |> assign(:countries, countries)}
     else
       {:ok, push_navigate(socket, to: ~p"/")}
     end
@@ -37,8 +38,25 @@ defmodule DiplomacyWeb.CountryLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="relative flex flex-col lg:flex-row items-start justify-center h-full p-4 lg:p-8 gap-8 bg-gray-900 min-h-screen overflow-hidden">
+    <div class={"relative flex flex-col lg:flex-row items-start justify-center h-full p-4 lg:p-8 gap-8 bg-gray-900 min-h-screen overflow-hidden " <> if @active_event, do: "pt-14 sm:pt-16 lg:pt-20", else: ""}>
       
+      <!-- Global Breaking News Banner -->
+      <div :if={@active_event} class="fixed top-0 left-0 w-full z-[100] bg-red-600 border-b border-red-400 shadow-2xl animate-in slide-in-from-top duration-500">
+        <div class="flex items-center">
+          <div class="bg-black text-white px-4 lg:px-8 py-2 font-black italic tracking-tighter whitespace-nowrap z-10 flex items-center gap-3 text-[10px] sm:text-xs lg:text-base border-r border-red-500/30">
+            <span class="animate-pulse text-red-500 text-xs">●</span> BREAKING NEWS
+          </div>
+          <div class="flex-1 overflow-hidden py-2 bg-red-600 relative px-4 lg:px-10">
+            <div class="whitespace-nowrap animate-marquee inline-block font-bold text-white uppercase tracking-wider text-[10px] sm:text-xs lg:text-sm pl-4">
+              <%= @active_event.title %>: <%= @active_event.description %> — <%= @active_event.title %>: <%= @active_event.description %>
+            </div>
+          </div>
+          <button phx-click="close_event_banner" class="bg-black/20 hover:bg-black/40 text-white px-4 py-2 transition-colors border-l border-white/10 z-20">
+            ✕
+          </button>
+        </div>
+      </div>
+
       <!-- Role Selection Overlay -->
       <%= if is_nil(@selected_role) do %>
         <div class="fixed inset-0 z-50 bg-gray-950/90 backdrop-blur-sm flex items-center justify-center p-4">
@@ -49,6 +67,7 @@ defmodule DiplomacyWeb.CountryLive do
             <div class="grid grid-cols-1 gap-4">
               <%= for role <- String.split(@settings.available_roles, ",") do %>
                 <% 
+                  role = String.trim(role)
                   count = Map.get(@role_counts, role, 0)
                   is_full = count >= @settings.max_players_per_role
                 %>
@@ -190,7 +209,7 @@ defmodule DiplomacyWeb.CountryLive do
       </button>
 
       <!-- Chat Window -->
-      <div :if={@show_chat && @settings.chat_enabled} class="fixed bottom-24 right-6 z-40 w-80 lg:w-96 h-[500px] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+      <div :if={@show_chat && @settings.chat_enabled} class="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-40 sm:w-80 lg:w-96 h-[500px] max-h-[70vh] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
         <header class="bg-gray-750 p-4 border-b border-gray-700 flex justify-between items-center">
           <h3 class="font-bold text-white flex items-center gap-2">
             <span>🌐</span> Global Intelligence
@@ -198,9 +217,9 @@ defmodule DiplomacyWeb.CountryLive do
           <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase">Live</span>
         </header>
 
-        <div id="chat-messages" phx-hook="ChatScroll" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-900/50">
-          <%= for msg <- @chat_messages do %>
-            <div id={"msg-#{msg.id}"} class="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-1">
+        <div id="chat-messages" phx-hook="ChatScroll" phx-update="stream" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-900/50">
+          <%= for {id, msg} <- @streams.chat_messages do %>
+            <div id={id} class="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-1">
               <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-tighter">
                 <span class="text-blue-400"><%= msg.country_name %></span>
                 <span class="text-gray-500">•</span>
@@ -283,8 +302,10 @@ defmodule DiplomacyWeb.CountryLive do
 
   @impl true
   def handle_event("collect_tax", _params, socket) do
-    {:ok, updated_country} = Game.collect_tax(socket.assigns.country)
-    {:noreply, assign(socket, :country, updated_country)}
+    case Game.collect_tax(socket.assigns.country) do
+      {:ok, updated_country} -> {:noreply, assign(socket, :country, updated_country)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to collect taxes")}
+    end
   end
 
   @impl true
@@ -298,10 +319,31 @@ defmodule DiplomacyWeb.CountryLive do
     end
   end
 
+  @impl true
+  def handle_event("close_event_banner", _params, socket) do
+    {:noreply, assign(socket, :active_event, nil)}
+  end
+
   # PubSub Info
   @impl true
+  def handle_info({:global_event, event}, socket) do
+    # Clear previous timer if any and start a new one to hide the banner after 60s
+    Process.send_after(self(), :clear_active_event, 60000)
+    
+    {:noreply,
+     socket
+     |> assign(:active_event, event)
+     |> push_event("trigger-shake", %{})}
+  end
+
+  @impl true
+  def handle_info(:clear_active_event, socket) do
+    {:noreply, assign(socket, :active_event, nil)}
+  end
+
+  @impl true
   def handle_info({:new_chat_message, message}, socket) do
-    {:noreply, assign(socket, :chat_messages, socket.assigns.chat_messages ++ [message])}
+    {:noreply, stream_insert(socket, :chat_messages, message)}
   end
 
   @impl true
@@ -355,6 +397,7 @@ defmodule DiplomacyWeb.CountryLive do
 
   @impl true
   def handle_info({:country_updated, updated_country}, socket) do
+    # Only update the list, temporary_assigns will handle the rest
     new_countries = 
       Enum.map(socket.assigns.countries, fn c -> 
         if c.id == updated_country.id, do: updated_country, else: c

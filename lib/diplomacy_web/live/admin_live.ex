@@ -17,9 +17,9 @@ defmodule DiplomacyWeb.AdminLive do
      socket 
      |> assign(:settings, settings)
      |> assign(:form, form)
-     |> assign(:countries, Game.list_countries())
      |> assign(:active_tab, "economics")
      |> assign(:is_dirty, false)
+     |> stream(:countries, Game.list_countries())
     }
   end
 
@@ -176,6 +176,22 @@ defmodule DiplomacyWeb.AdminLive do
                   <.input field={@form[:admin_inject_amount]} type="number" class="w-24 bg-gray-950 border-gray-800 focus:border-emerald-500 focus:ring-0 text-right font-mono text-emerald-400 rounded-md transition-all" />
                 </div>
 
+                <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition border-t-2 border-purple-500/20 bg-purple-500/5">
+                  <div class="flex flex-col">
+                    <span class="text-sm font-medium text-purple-300">Global Events Enabled</span>
+                    <span class="text-[10px] text-purple-500/70 uppercase font-bold">Chaos & Opportunity engine</span>
+                  </div>
+                  <.input field={@form[:event_enabled]} type="checkbox" class="w-6 h-6 rounded border-purple-800 bg-gray-950 text-purple-500 focus:ring-0" />
+                </div>
+
+                <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition bg-purple-500/5">
+                  <div class="flex flex-col">
+                    <span class="text-sm font-medium text-purple-300">Event Probability (%)</span>
+                    <span class="text-[10px] text-purple-500/70 uppercase font-bold">Chance per simulation tick</span>
+                  </div>
+                  <.input field={@form[:event_probability]} type="number" class="w-24 bg-gray-950 border-gray-800 focus:border-purple-500 focus:ring-0 text-right font-mono text-purple-400 rounded-md transition-all" />
+                </div>
+
                 <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition">
                   <div class="flex flex-col">
                     <span class="text-sm font-medium text-gray-300">Tick Interval (ms)</span>
@@ -231,9 +247,9 @@ defmodule DiplomacyWeb.AdminLive do
               <p class="text-sm text-gray-500 mt-1">Direct intervention in nation states.</p>
             </header>
 
-            <div class="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
-              <%= for c <- @countries do %>
-                <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition group">
+            <div id="countries-list" phx-update="stream" class="bg-gray-900 rounded-2xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+              <%= for {id, c} <- @streams.countries do %>
+                <div id={id} class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition group">
                   <div class="flex flex-col">
                     <span class="text-sm font-bold text-white"><%= c.name %></span>
                     <span class="text-[10px] font-mono text-gray-500">
@@ -316,7 +332,7 @@ defmodule DiplomacyWeb.AdminLive do
   def handle_event("delete_country", %{"id" => id}, socket) do
     country = Game.get_country!(id)
     Game.delete_country(country)
-    {:noreply, assign(socket, :countries, Game.list_countries())}
+    {:noreply, socket}
   end
 
   @impl true
@@ -327,27 +343,35 @@ defmodule DiplomacyWeb.AdminLive do
     Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", :world_tick)
     {:noreply, 
       socket 
-      |> assign(:countries, [])
+      |> stream(:countries, [], reset: true)
       |> put_flash(:info, "WORLD & CHAT RESET SUCCESSFUL")}
   end
 
   @impl true
   def handle_info(:world_tick, socket) do
-    {:noreply, assign(socket, :countries, Game.list_countries())}
+    {:noreply, stream(socket, :countries, Game.list_countries(), reset: true)}
   end
 
   @impl true
-  def handle_info({:country_created, _}, socket) do
-    {:noreply, assign(socket, :countries, Game.list_countries())}
+  def handle_info({:country_created, country}, socket) do
+    {:noreply, stream_insert(socket, :countries, country, at: 0)}
   end
 
   @impl true
-  def handle_info({:country_updated, _}, socket) do
-    {:noreply, assign(socket, :countries, Game.list_countries())}
+  def handle_info({:country_updated, country}, socket) do
+    {:noreply, stream_insert(socket, :countries, country)}
   end
 
   @impl true
   def handle_info({:settings_updated, settings}, socket) do
-    {:noreply, assign(socket, :settings, settings)}
+    # Eğer kullanıcı o an bir şeyler yazmıyorsa (dirty değilse) formu güncelle
+    if socket.assigns.is_dirty do
+      {:noreply, assign(socket, :settings, settings)}
+    else
+      {:noreply, 
+       socket 
+       |> assign(:settings, settings)
+       |> assign(:form, settings |> Diplomacy.Game.Settings.changeset(%{}) |> to_form())}
+    end
   end
 end
