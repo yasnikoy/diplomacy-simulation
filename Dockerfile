@@ -13,5 +13,15 @@ RUN mix local.hex --force && \
 # Set working directory
 WORKDIR /app
 
+# Copy the mix files first to cache dependencies
+COPY mix.exs mix.lock ./
+RUN mix deps.get
+
+# Copy the rest of the application code
+COPY . .
+
+# Compile the project
+RUN mix do compile
+
 # The command will be overridden by docker-compose or command line
 CMD ["mix", "phx.server"]
