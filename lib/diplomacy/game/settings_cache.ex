@@ -75,6 +75,9 @@ defmodule Diplomacy.Game.SettingsCache do
         |> Settings.changeset(%{starting_budget: 500, starting_army: 10, admin_inject_amount: 1000}) 
         |> Repo.update()
       updated
+    else
+      settings
+    end
   end
 
   defp has_nil_fields?(settings) do
