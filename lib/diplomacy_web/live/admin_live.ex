@@ -170,6 +170,14 @@ defmodule DiplomacyWeb.AdminLive do
 
                 <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition">
                   <div class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-300">Admin Inject Amount</span>
+                    <span class="text-[10px] text-gray-500 uppercase">Gold amount for admin manual injection</span>
+                  </div>
+                  <.input field={@form[:admin_inject_amount]} type="number" class="w-24 bg-gray-950 border-gray-800 focus:border-emerald-500 focus:ring-0 text-right font-mono text-emerald-400 rounded-md transition-all" />
+                </div>
+
+                <div class="flex items-center justify-between p-4 hover:bg-gray-800/50 transition">
+                  <div class="flex flex-col">
                     <span class="text-sm font-medium text-gray-300">Tick Interval (ms)</span>
                     <span class="text-[10px] text-gray-500 uppercase">Simulation speed (Lower is faster)</span>
                   </div>
@@ -300,15 +308,14 @@ defmodule DiplomacyWeb.AdminLive do
   @impl true
   def handle_event("inject_resources", %{"id" => id}, socket) do
     country = Game.get_country!(id)
-    Game.update_country(country, %{budget: country.budget + 1000})
+    Game.update_country(country, %{budget: country.budget + socket.assigns.settings.admin_inject_amount})
     {:noreply, socket}
   end
 
   @impl true
   def handle_event("delete_country", %{"id" => id}, socket) do
     country = Game.get_country!(id)
-    Repo.delete(country)
-    Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", :world_tick)
+    Game.delete_country(country)
     {:noreply, assign(socket, :countries, Game.list_countries())}
   end
 

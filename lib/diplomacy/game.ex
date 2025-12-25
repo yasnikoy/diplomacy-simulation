@@ -67,6 +67,14 @@ defmodule Diplomacy.Game do
   end
 
   @doc """
+  Deletes a country.
+  """
+  def delete_country(%Country{} = country) do
+    Repo.delete(country)
+    Phoenix.PubSub.broadcast(Diplomacy.PubSub, "game:global", :world_tick)
+  end
+
+  @doc """
   Collects taxes: +Budget, -Morale. Uses dynamic settings.
   """
   @spec collect_tax(Country.t()) :: {:ok, Country.t()} | {:error, any()}

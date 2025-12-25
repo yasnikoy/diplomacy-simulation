@@ -69,13 +69,12 @@ defmodule Diplomacy.Game.SettingsCache do
 
     # Identify fields that are currently nil but should have values
     # We use the changeset to apply defaults if we find nils
-    if has_nil_fields?(settings) do
-      settings
-      |> Settings.changeset(%{}) # Changeset will use default values from schema for nils
-      |> Repo.update!()
-    else
-      settings
-    end
+    if is_nil(settings.starting_budget) or is_nil(settings.starting_army) or is_nil(settings.admin_inject_amount) do
+      {:ok, updated} = 
+        settings 
+        |> Settings.changeset(%{starting_budget: 500, starting_army: 10, admin_inject_amount: 1000}) 
+        |> Repo.update()
+      updated
   end
 
   defp has_nil_fields?(settings) do

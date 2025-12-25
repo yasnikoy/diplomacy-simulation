@@ -21,6 +21,7 @@ defmodule Diplomacy.Game.Settings do
     field :chat_enabled, :boolean, default: true
     field :available_roles, :string, default: "Diplomat,Commander"
     field :max_players_per_role, :integer, default: 3
+    field :admin_inject_amount, :integer, default: 1000
 
     timestamps(type: :utc_datetime)
   end
@@ -46,7 +47,8 @@ defmodule Diplomacy.Game.Settings do
       :starting_army,
       :chat_enabled,
       :available_roles,
-      :max_players_per_role
+      :max_players_per_role,
+      :admin_inject_amount
     ])
     |> validate_required([
       :soldier_cost,
@@ -66,7 +68,8 @@ defmodule Diplomacy.Game.Settings do
       :starting_army,
       :chat_enabled,
       :available_roles,
-      :max_players_per_role
+      :max_players_per_role,
+      :admin_inject_amount
     ])
     |> validate_number(:soldier_cost, greater_than_or_equal_to: 0)
     |> validate_number(:passive_income_interval_ms, greater_than_or_equal_to: 100) # Minimum 100ms to prevent crash
