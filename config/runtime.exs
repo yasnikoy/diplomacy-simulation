@@ -57,6 +57,9 @@ if config_env() == :prod do
 
   config :diplomacy, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Ticker Configuration
+  config :diplomacy, :start_ticker, System.get_env("START_TICKER", "true") == "true"
+
   config :diplomacy, DiplomacyWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
