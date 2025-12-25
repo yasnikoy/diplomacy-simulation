@@ -12,8 +12,6 @@
   animation: marquee 15s linear infinite;
 }
 
-@import "./phoenix.css";
-
 /* Custom Scrollbar */
 /* Hide default numeric input arrows */
 input[type='number']::-webkit-inner-spin-button,
